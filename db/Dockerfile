@@ -1,9 +1,9 @@
 FROM postgis/postgis:16-3.4-alpine
 
-# Set default environment variables
+# Set default environment variables (without sensitive data)
 ENV POSTGRES_DB=clearway
 ENV POSTGRES_USER=clearway
-ENV POSTGRES_PASSWORD=clearway_dev_password
+# Note: POSTGRES_PASSWORD is set via docker-compose.yml environment variables
 
 # Copy initialization scripts
 # These will be executed in alphabetical order on first container start
