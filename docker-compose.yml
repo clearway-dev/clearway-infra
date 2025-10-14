@@ -1,0 +1,57 @@
+services:
+  db:
+    build:
+      context: ./db
+      dockerfile: Dockerfile
+    container_name: clearway-db
+    platform: linux/arm64  # Native Apple Silicon support
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clearway}
+      POSTGRES_USER: ${POSTGRES_USER:-clearway}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clearway_dev_password}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - clearway-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clearway}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: clearway-pgadmin
+    platform: linux/arm64  # Native Apple Silicon support
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@clearway.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - clearway-network
+    depends_on:
+      - db
+    restart: unless-stopped
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:
+    name: clearway_postgres_data
+  pgadmin_data:
+    name: clearway_pgadmin_data
+
+networks:
+  clearway-network:
+    name: clearway-network
+    driver: bridge
