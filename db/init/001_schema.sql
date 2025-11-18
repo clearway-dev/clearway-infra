@@ -5,7 +5,6 @@
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Drop existing tables if they exist (for clean reset)
 DROP TABLE IF EXISTS segment_statistics CASCADE;
 DROP TABLE IF EXISTS clusters CASCADE;
 DROP TABLE IF EXISTS road_segments CASCADE;
@@ -14,6 +13,7 @@ DROP TABLE IF EXISTS cleaned_measurements CASCADE;
 DROP TABLE IF EXISTS raw_measurements CASCADE;
 DROP TABLE IF EXISTS sessions CASCADE;
 DROP TABLE IF EXISTS sensors CASCADE;
+DROP TABLE IF EXISTS vehicles CASCADE;
 
 -- Drop existing tables if they exist (for clean reset)
 DROP TABLE IF EXISTS segment_statistics CASCADE;
@@ -26,42 +26,36 @@ DROP TABLE IF EXISTS sessions CASCADE;
 DROP TABLE IF EXISTS sensors CASCADE;
 
 -- ==============================================
--- SENSORS TABLE
--- ==============================================
--- Stores information about vehicle-mounted sensors
 CREATE TABLE sensors (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    device_id VARCHAR(100) UNIQUE NOT NULL,
     description TEXT,
-    vehicle_width FLOAT NOT NULL CHECK (vehicle_width > 0),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT device_id_format CHECK (device_id ~ '^[A-Za-z0-9_-]+$')
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Indexes for performance
-CREATE INDEX idx_sensors_device_id ON sensors(device_id);
 CREATE INDEX idx_sensors_is_active ON sensors(is_active);
+
+-- ==============================================
+-- VEHICLES TABLE
+-- ==============================================
+CREATE TABLE vehicles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    vehicle_name VARCHAR(100) NOT NULL,
+    width FLOAT NOT NULL CHECK (width > 0)
+);
 
 -- ==============================================
 -- SESSIONS TABLE
 -- ==============================================
--- Represents measurement collection sessions
 CREATE TABLE sessions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     sensor_id UUID NOT NULL REFERENCES sensors(id) ON DELETE CASCADE,
-    start_time TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    end_time TIMESTAMP WITH TIME ZONE,
-    measurement_count INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT end_after_start CHECK (end_time IS NULL OR end_time > start_time)
+    vehicle_id UUID NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE
 );
 
--- Indexes for performance
 CREATE INDEX idx_sessions_sensor_id ON sessions(sensor_id);
-CREATE INDEX idx_sessions_start_time ON sessions(start_time DESC);
-CREATE INDEX idx_sessions_end_time ON sessions(end_time DESC);
+CREATE INDEX idx_sessions_vehicle_id ON sessions(vehicle_id);
 
 -- ==============================================
 -- RAW MEASUREMENTS TABLE
@@ -86,22 +80,60 @@ CREATE INDEX idx_raw_measurements_is_valid ON raw_measurements(is_valid);
 CREATE INDEX idx_raw_measurements_location ON raw_measurements(latitude, longitude);
 
 -- ==============================================
+-- ROAD SEGMENTS TABLE
+-- ==============================================
+-- Represents road segments from OpenStreetMap
+CREATE TABLE road_segments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    osm_id VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(255),
+    road_type VARCHAR(50),
+    geom GEOMETRY(LINESTRING, 4326) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Spatial index for geographic queries
+CREATE INDEX idx_road_segments_geom ON road_segments USING GIST(geom);
+CREATE INDEX idx_road_segments_osm_id ON road_segments(osm_id);
+CREATE INDEX idx_road_segments_road_type ON road_segments(road_type);
+
+-- ==============================================
+-- CLUSTERS TABLE
+-- ==============================================
+CREATE TABLE clusters (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    road_segment_id UUID REFERENCES road_segments(id) ON DELETE SET NULL,
+    avg_width FLOAT NOT NULL CHECK (avg_width > 0),
+    min_width FLOAT NOT NULL CHECK (min_width > 0),
+    max_width FLOAT NOT NULL CHECK (max_width > 0),
+    geom GEOMETRY(POINT, 4326) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT width_range_valid CHECK (min_width <= avg_width AND avg_width <= max_width)
+);
+
+CREATE INDEX idx_clusters_geom ON clusters USING GIST(geom);
+CREATE INDEX idx_clusters_road_segment ON clusters(road_segment_id);
+CREATE INDEX idx_clusters_avg_width ON clusters(avg_width);
+
+-- ==============================================
 -- CLEANED MEASUREMENTS TABLE
 -- ==============================================
--- Stores validated and processed measurements
 CREATE TABLE cleaned_measurements (
     id BIGSERIAL PRIMARY KEY,
     raw_measurement_id BIGINT NOT NULL REFERENCES raw_measurements(id) ON DELETE CASCADE,
     cleaned_width FLOAT NOT NULL CHECK (cleaned_width > 0),
     quality_score FLOAT CHECK (quality_score BETWEEN 0 AND 1),
+    cluster_id UUID REFERENCES clusters(id) ON DELETE SET NULL,
     geom GEOMETRY(POINT, 4326) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Spatial index for geographic queries
 CREATE INDEX idx_cleaned_measurements_geom ON cleaned_measurements USING GIST(geom);
 CREATE INDEX idx_cleaned_measurements_raw_id ON cleaned_measurements(raw_measurement_id);
 CREATE INDEX idx_cleaned_measurements_quality ON cleaned_measurements(quality_score DESC);
+CREATE INDEX idx_cleaned_measurements_cluster_id ON cleaned_measurements(cluster_id);
 
 -- ==============================================
 -- INVALID MEASUREMENTS TABLE
@@ -116,51 +148,6 @@ CREATE TABLE invalid_measurements (
 
 -- Index for performance
 CREATE INDEX idx_invalid_measurements_raw_id ON invalid_measurements(raw_measurement_id);
-
--- ==============================================
--- ROAD SEGMENTS TABLE
--- ==============================================
--- Represents road segments from OpenStreetMap
-CREATE TABLE road_segments (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    osm_id VARCHAR(50) UNIQUE NOT NULL,
-    name VARCHAR(255),
-    road_type VARCHAR(50),
-    geom GEOMETRY(LINESTRING, 4326) NOT NULL,
-    length_meters DOUBLE PRECISION GENERATED ALWAYS AS (ST_Length(geography(geom))) STORED,
-    municipality VARCHAR(100),
-    region VARCHAR(100),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Spatial index for geographic queries
-CREATE INDEX idx_road_segments_geom ON road_segments USING GIST(geom);
-CREATE INDEX idx_road_segments_osm_id ON road_segments(osm_id);
-CREATE INDEX idx_road_segments_road_type ON road_segments(road_type);
-CREATE INDEX idx_road_segments_municipality ON road_segments(municipality);
-
--- ==============================================
--- CLUSTERS TABLE
--- ==============================================
--- Aggregated measurements grouped by location and road segment
-CREATE TABLE clusters (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    road_segment_id UUID REFERENCES road_segments(id) ON DELETE SET NULL,
-    avg_width FLOAT NOT NULL CHECK (avg_width > 0),
-    min_width FLOAT NOT NULL CHECK (min_width > 0),
-    max_width FLOAT NOT NULL CHECK (max_width > 0),
-    measurement_count INTEGER DEFAULT 0,
-    geom GEOMETRY(POINT, 4326) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT width_range_valid CHECK (min_width <= avg_width AND avg_width <= max_width)
-);
-
--- Spatial index for geographic queries
-CREATE INDEX idx_clusters_geom ON clusters USING GIST(geom);
-CREATE INDEX idx_clusters_road_segment ON clusters(road_segment_id);
-CREATE INDEX idx_clusters_avg_width ON clusters(avg_width);
 
 -- ==============================================
 -- SEGMENT STATISTICS TABLE
@@ -192,12 +179,12 @@ CREATE INDEX idx_segment_statistics_avg_width ON segment_statistics(avg_width);
 CREATE OR REPLACE VIEW active_sessions AS
 SELECT 
     s.*,
-    sen.device_id,
-    sen.vehicle_width
+    sen.description,
+    v.vehicle_name,
+    v.width as vehicle_width
 FROM sessions s
 JOIN sensors sen ON s.sensor_id = sen.id
-WHERE s.end_time IS NULL
-ORDER BY s.start_time DESC;
+JOIN vehicles v ON s.vehicle_id = v.id;
 
 -- Recent measurements view (last 24 hours)
 CREATE OR REPLACE VIEW recent_measurements AS
@@ -211,56 +198,37 @@ SELECT
     rm.distance_right,
     rm.is_valid,
     s.sensor_id,
-    sen.device_id
+    s.vehicle_id,
+    sen.description as sensor_description,
+    v.vehicle_name,
+    v.width as vehicle_width
 FROM raw_measurements rm
 JOIN sessions s ON rm.session_id = s.id
 JOIN sensors sen ON s.sensor_id = sen.id
+JOIN vehicles v ON s.vehicle_id = v.id
 WHERE rm.measured_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'
 ORDER BY rm.measured_at DESC;
 
--- Road segment summary view
 CREATE OR REPLACE VIEW road_segment_summary AS
 SELECT 
     rs.id,
     rs.osm_id,
     rs.name,
     rs.road_type,
-    rs.municipality,
     COUNT(DISTINCT c.id) as cluster_count,
     AVG(c.avg_width) as overall_avg_width,
     MIN(c.min_width) as overall_min_width,
-    MAX(c.max_width) as overall_max_width,
-    SUM(c.measurement_count) as total_measurements
+    MAX(c.max_width) as overall_max_width
 FROM road_segments rs
 LEFT JOIN clusters c ON rs.id = c.road_segment_id
-GROUP BY rs.id, rs.osm_id, rs.name, rs.road_type, rs.municipality;
+GROUP BY rs.id, rs.osm_id, rs.name, rs.road_type;
 
 -- ==============================================
 -- FUNCTIONS
 -- ==============================================
 
--- Function to update session measurement count
-CREATE OR REPLACE FUNCTION update_session_measurement_count()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF TG_OP = 'INSERT' THEN
-        UPDATE sessions 
-        SET measurement_count = measurement_count + 1
-        WHERE id = NEW.session_id;
-    ELSIF TG_OP = 'DELETE' THEN
-        UPDATE sessions 
-        SET measurement_count = GREATEST(measurement_count - 1, 0)
-        WHERE id = OLD.session_id;
-    END IF;
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger to automatically update session measurement counts
-CREATE TRIGGER trigger_update_session_measurement_count
-AFTER INSERT OR DELETE ON raw_measurements
-FOR EACH ROW
-EXECUTE FUNCTION update_session_measurement_count();
+-- Note: Removed update_session_measurement_count function and trigger
+-- as sessions table no longer has measurement_count column
 
 -- Function to calculate road width from raw measurements
 CREATE OR REPLACE FUNCTION calculate_road_width(
