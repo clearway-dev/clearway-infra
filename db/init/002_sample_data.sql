@@ -5,9 +5,9 @@
 -- Ensure necessary base records exist for Foreign Key references (sessions, raw_measurements)
 
 -- 1. Create a dummy vehicle (required for sessions and width calculation)
--- Note: width 2.08 meters (using value from the original Ford Transit sample)
+-- Note: width 208 centimeters (using value from the original Ford Transit sample)
 INSERT INTO vehicles (id, vehicle_name, width) 
-VALUES ('11111111-1111-1111-1111-111111111111', 'ClearWay Test Vehicle', 2.08)
+VALUES ('11111111-1111-1111-1111-111111111111', 'ClearWay Test Vehicle', 208)
 ON CONFLICT (id) DO NOTHING;
 
 -- 2. Create a dummy sensor (required for sessions)
