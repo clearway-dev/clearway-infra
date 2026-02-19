@@ -14,6 +14,7 @@ DROP TABLE IF EXISTS raw_measurements CASCADE;
 DROP TABLE IF EXISTS sessions CASCADE;
 DROP TABLE IF EXISTS sensors CASCADE;
 DROP TABLE IF EXISTS vehicles CASCADE;
+DROP TABLE IF EXISTS target_vehicles CASCADE;
 
 -- Drop existing tables if they exist (for clean reset)
 DROP TABLE IF EXISTS segment_statistics CASCADE;
@@ -44,6 +45,30 @@ CREATE TABLE vehicles (
     vehicle_name VARCHAR(100) NOT NULL,
     width FLOAT NOT NULL CHECK (width > 0)
 );
+
+-- ==============================================
+-- TARGET VEHICLES TABLE
+-- ==============================================
+-- IZS and other vehicles whose road passability is evaluated
+CREATE TABLE target_vehicles (
+    id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name                 VARCHAR(255) NOT NULL,
+    category             VARCHAR(100),
+    width                FLOAT CHECK (width > 0),
+    height               FLOAT CHECK (height > 0),
+    weight               FLOAT CHECK (weight > 0),
+    turning_radius_inner FLOAT CHECK (turning_radius_inner > 0),
+    turning_radius_outer FLOAT CHECK (turning_radius_outer > 0 AND turning_radius_outer >= turning_radius_inner),
+    created_at           TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at           TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE target_vehicles IS 'IZS and other vehicles whose road passability is evaluated against road segment measurements';
+COMMENT ON COLUMN target_vehicles.width IS 'Vehicle width in meters';
+COMMENT ON COLUMN target_vehicles.height IS 'Vehicle height in meters';
+COMMENT ON COLUMN target_vehicles.weight IS 'Vehicle weight in tonnes';
+COMMENT ON COLUMN target_vehicles.turning_radius_inner IS 'Inner turning radius in meters';
+COMMENT ON COLUMN target_vehicles.turning_radius_outer IS 'Outer turning radius in meters';
 
 -- ==============================================
 -- SESSIONS TABLE
@@ -331,3 +356,4 @@ COMMENT ON COLUMN clusters.avg_width IS 'Average road width in cluster (meters)'
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO clearway;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO clearway;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO clearway;
+GRANT SELECT, INSERT, UPDATE, DELETE ON target_vehicles TO clearway;

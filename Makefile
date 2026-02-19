@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs ps reset clean build db-shell test-connection up-tools
+.PHONY: help up down restart logs ps reset clean build db-shell test-connection up-tools migrate
 
 # Default target
 help:
@@ -16,6 +16,7 @@ help:
 	@echo "  make clean           - Remove all containers and volumes"
 	@echo "  make build           - Rebuild containers"
 	@echo "  make db-shell        - Connect to PostgreSQL shell"
+	@echo "  make migrate         - Apply pending migrations from db/migrations/"
 	@echo "  make test-connection - Test database connection"
 	@echo ""
 
@@ -80,6 +81,15 @@ build:
 db-shell:
 	@echo "🔌 Connecting to PostgreSQL..."
 	docker-compose exec db psql -U clearway -d clearway
+
+# Apply all pending migrations from db/migrations/ in order
+migrate:
+	@echo "🔄 Applying migrations..."
+	@for f in $$(ls db/migrations/V*.sql 2>/dev/null | sort); do \
+		echo "  → $$f"; \
+		docker-compose exec -T db psql -U $${POSTGRES_USER:-clearway} -d $${POSTGRES_DB:-clearway} -f - < $$f; \
+	done
+	@echo "✅ Migrations applied!"
 
 # Test database connection
 test-connection:
