@@ -303,6 +303,37 @@ ORDER BY last_report NULLS FIRST;
 
 ---
 
+### 4. `target_vehicles`
+
+**Purpose**: IZS and other vehicles whose road passability is evaluated against road segment measurements (e.g. HZS vehicles).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | UUID | PRIMARY KEY | Unique identifier |
+| `name` | VARCHAR(255) | NOT NULL | Vehicle designation, e.g. "CAS 24 SCANIA" |
+| `category` | VARCHAR(100) | - | Service category, e.g. "hasiči", "záchranka" |
+| `width` | FLOAT | CHECK > 0 | Vehicle width in meters |
+| `height` | FLOAT | CHECK > 0 | Vehicle height in meters |
+| `weight` | FLOAT | CHECK > 0 | Vehicle weight in tonnes |
+| `length` | FLOAT | CHECK > 0 | Vehicle length in meters |
+| `turning_diameter_track` | FLOAT | nullable, CHECK > 0 | Outer track turning diameter in meters (vnější stopový průměr zatáčení) |
+| `turning_diameter_clearance` | FLOAT | nullable, CHECK > 0 | Outer clearance turning diameter in meters (vnější obrysový průměr zatáčení) |
+| `stabilization_width` | FLOAT | nullable, CHECK > 0 | Minimum stabilization/outrigger width in meters (šířka pro patky) |
+| `created_at` | TIMESTAMP WITH TIME ZONE | DEFAULT NOW() | Record creation time |
+
+**Seeded vehicles** (HZS Plzeňský kraj, source: official requirements document):
+
+| Name | width | height | weight | length | track_diam | clearance_diam | stab_width |
+|---|---|---|---|---|---|---|---|
+| CAS 15 MB ATEGO | 2.52 | 3.27 | 14.0 | 7.36 | 16.0 | — | — |
+| CAS 24 TATRA 815 TERRNO | 2.55 | 3.17 | 17.5 | 8.78 | 16.5 | — | — |
+| CAS 24 SCANIA | 2.55 | 3.4 | 18.6 | 7.65 | 16.0 | — | — |
+| CAS 32 TATRA 815 | 2.5 | 3.35 | 22.5 | 8.51 | 19.0 | — | — |
+| AP 37 IVECO MAGIRUS | 2.5 | 3.55 | 18.0 | 9.75 | — | 19.85 | — |
+| AZ 52 IVECO MAGIRUS | 2.5 | 3.88 | 26.0 | 12.0 | 18.0 | 23.45 | 7.0 |
+
+---
+
 ## Migration Strategy
 
 ### Current State

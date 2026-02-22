@@ -51,24 +51,43 @@ CREATE TABLE vehicles (
 -- ==============================================
 -- IZS and other vehicles whose road passability is evaluated
 CREATE TABLE target_vehicles (
-    id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name                 VARCHAR(255) NOT NULL,
-    category             VARCHAR(100),
-    width                FLOAT CHECK (width > 0),
-    height               FLOAT CHECK (height > 0),
-    weight               FLOAT CHECK (weight > 0),
-    turning_radius_inner FLOAT CHECK (turning_radius_inner > 0),
-    turning_radius_outer FLOAT CHECK (turning_radius_outer > 0 AND turning_radius_outer >= turning_radius_inner),
-    created_at           TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at           TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    id                         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name                       VARCHAR(255) NOT NULL,
+    category                   VARCHAR(100),
+    width                      FLOAT CHECK (width > 0),
+    height                     FLOAT CHECK (height > 0),
+    weight                     FLOAT CHECK (weight > 0),
+    length                     FLOAT CHECK (length > 0),
+    turning_diameter_track     FLOAT CHECK (turning_diameter_track > 0),
+    turning_diameter_clearance FLOAT CHECK (turning_diameter_clearance > 0),
+    stabilization_width        FLOAT CHECK (stabilization_width > 0),
+    created_at                 TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 COMMENT ON TABLE target_vehicles IS 'IZS and other vehicles whose road passability is evaluated against road segment measurements';
 COMMENT ON COLUMN target_vehicles.width IS 'Vehicle width in meters';
 COMMENT ON COLUMN target_vehicles.height IS 'Vehicle height in meters';
 COMMENT ON COLUMN target_vehicles.weight IS 'Vehicle weight in tonnes';
-COMMENT ON COLUMN target_vehicles.turning_radius_inner IS 'Inner turning radius in meters';
-COMMENT ON COLUMN target_vehicles.turning_radius_outer IS 'Outer turning radius in meters';
+COMMENT ON COLUMN target_vehicles.length IS 'Vehicle length in meters';
+COMMENT ON COLUMN target_vehicles.turning_diameter_track IS 'Outer track turning diameter in meters (vnější stopový průměr zatáčení)';
+COMMENT ON COLUMN target_vehicles.turning_diameter_clearance IS 'Outer clearance turning diameter in meters (vnější obrysový průměr zatáčení), nullable';
+COMMENT ON COLUMN target_vehicles.stabilization_width IS 'Minimum stabilization (outrigger) width in meters (šířka pro patky), nullable';
+
+-- ==============================================
+-- STATIONS TABLE
+-- ==============================================
+CREATE TABLE stations (
+    id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name         VARCHAR(255) NOT NULL,
+    type         VARCHAR(50),
+    address      VARCHAR(500),
+    lat          DOUBLE PRECISION NOT NULL,
+    lon          DOUBLE PRECISION NOT NULL,
+    notes        TEXT,
+    created_at   TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+COMMENT ON TABLE stations IS 'Emergency service dispatch stations (fire, police, ambulance) used as route start presets';
 
 -- ==============================================
 -- SESSIONS TABLE
