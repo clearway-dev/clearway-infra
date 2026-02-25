@@ -43,7 +43,9 @@ CREATE INDEX idx_sensors_is_active ON sensors(is_active);
 CREATE TABLE vehicles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     vehicle_name VARCHAR(100) NOT NULL,
-    width FLOAT NOT NULL CHECK (width > 0)
+    width FLOAT NOT NULL CHECK (width > 0),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ==============================================
@@ -109,10 +111,14 @@ CREATE TABLE raw_measurements (
     id BIGSERIAL PRIMARY KEY,
     session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     measured_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    latitude DOUBLE PRECISION NOT NULL CHECK (latitude BETWEEN -90 AND 90),
-    longitude DOUBLE PRECISION NOT NULL CHECK (longitude BETWEEN -180 AND 180),
-    distance_left FLOAT NOT NULL CHECK (distance_left >= 0),
-    distance_right FLOAT NOT NULL CHECK (distance_right >= 0),
+    -- No range or NOT NULL constraints on measured columns: Bronze layer accepts
+    -- physically invalid readings and missing values (GPS fix failure, sensor
+    -- timeout) so that hardware error rates can be measured. Flag bad rows via
+    -- is_valid = false and handle them downstream in the pipeline.
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    distance_left FLOAT,
+    distance_right FLOAT,
     is_valid BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -273,6 +279,22 @@ GROUP BY rs.id, rs.osm_id, rs.name, rs.road_type;
 
 -- Note: Removed update_session_measurement_count function and trigger
 -- as sessions table no longer has measurement_count column
+
+-- Generic trigger function: sets updated_at = CURRENT_TIMESTAMP before every UPDATE
+CREATE OR REPLACE FUNCTION trigger_set_updated_at()
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_vehicles_set_updated_at
+    BEFORE UPDATE ON vehicles
+    FOR EACH ROW
+    EXECUTE FUNCTION trigger_set_updated_at();
 
 -- Function to calculate road width from raw measurements
 CREATE OR REPLACE FUNCTION calculate_road_width(
