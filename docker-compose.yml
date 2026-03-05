@@ -24,6 +24,27 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Runs Flyway migrations on every `docker compose up`.
+  # baselineVersion=4: V001-V004 were applied manually before Flyway was
+  # introduced; Flyway will record them as applied and only run V005 onwards.
+  migrator:
+    image: flyway/flyway:10-alpine
+    environment:
+      FLYWAY_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-clearway}
+      FLYWAY_USER: ${POSTGRES_USER:-clearway}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD:-clearway_dev_password}
+      FLYWAY_BASELINE_ON_MIGRATE: "true"
+      FLYWAY_BASELINE_VERSION: "4"
+    volumes:
+      - ./db/migrations:/flyway/sql:ro
+    command: -connectRetries=60 migrate
+    networks:
+      - clearway-network
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+
   # Optional: pgAdmin for database management
   pgadmin:
     image: dpage/pgadmin4:latest
