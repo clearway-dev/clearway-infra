@@ -97,7 +97,8 @@ COMMENT ON TABLE stations IS 'Emergency service dispatch stations (fire, police,
 CREATE TABLE sessions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     sensor_id UUID NOT NULL REFERENCES sensors(id) ON DELETE CASCADE,
-    vehicle_id UUID NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE
+    vehicle_id UUID NOT NULL REFERENCES vehicles(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX idx_sessions_sensor_id ON sessions(sensor_id);
@@ -119,6 +120,8 @@ CREATE TABLE raw_measurements (
     longitude DOUBLE PRECISION,
     distance_left FLOAT,
     distance_right FLOAT,
+    speed FLOAT CHECK (speed >= 0),
+    accuracy_gps FLOAT CHECK (accuracy_gps >= 0),
     is_valid BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -386,6 +389,8 @@ COMMENT ON TABLE segment_statistics IS 'Daily statistics for road segments';
 
 COMMENT ON COLUMN raw_measurements.distance_left IS 'Distance from sensor to left road edge (meters)';
 COMMENT ON COLUMN raw_measurements.distance_right IS 'Distance from sensor to right road edge (meters)';
+COMMENT ON COLUMN raw_measurements.speed IS 'Vehicle speed at time of measurement (m/s), nullable';
+COMMENT ON COLUMN raw_measurements.accuracy_gps IS 'GPS horizontal accuracy estimate (meters), nullable';
 COMMENT ON COLUMN cleaned_measurements.quality_score IS 'Measurement quality score from 0 (low) to 1 (high)';
 COMMENT ON COLUMN clusters.avg_width IS 'Average road width in cluster (meters)';
 
