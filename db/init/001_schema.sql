@@ -120,8 +120,8 @@ CREATE TABLE raw_measurements (
     longitude DOUBLE PRECISION,
     distance_left FLOAT,
     distance_right FLOAT,
-    speed FLOAT CHECK (speed >= 0),
-    accuracy_gps FLOAT CHECK (accuracy_gps >= 0),
+    speed FLOAT,
+    accuracy_gps FLOAT,
     is_valid BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
