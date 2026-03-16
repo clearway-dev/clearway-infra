@@ -38,7 +38,7 @@ jobs:
     services:
       postgres:
         # pgrouting/pgrouting bundles PostgreSQL + PostGIS + pgRouting in one image
-      image: pgrouting/pgrouting:15-3.4-3.5.1
+        image: pgrouting/pgrouting:15-3.4-3.5.1
         env:
           POSTGRES_USER: clearway
           POSTGRES_PASSWORD: clearway_dev_password
