@@ -1,0 +1,8 @@
+[sqlfluff]
+dialect = postgres
+templater = raw
+# Exclude style-only rules so linting fails only on structural/parse errors.
+# LT01: spacing, LT02: indent, LT05: line length
+# CP02: identifier case, CP03: function name case
+# RF04: keywords used as identifiers (e.g. "name", "type" columns)
+exclude_rules = LT01,LT02,LT05,CP02,CP03,RF04
