@@ -26,11 +26,14 @@ jobs:
         run: ruff check scripts/ --select E9,F821
 
       # --templater raw: files are plain SQL with no templating language
+      # LT (layout), CP (capitalisation), RF (references) are style-only rules;
+      # excluded so that only structural and parse errors fail the build.
       - name: SQL — sqlfluff
         run: |
           sqlfluff lint \
             --dialect postgres \
             --templater raw \
+            --exclude-rules LT,CP,RF \
             db/migrations/ \
             scripts/setup_routing.sql
 
