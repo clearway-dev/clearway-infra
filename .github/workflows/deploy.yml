@@ -1,14 +1,11 @@
 name: Deploy Infra (Full Sync)
 
 on:
-  workflow_run:
-    workflows: ["Infrastructure CI"]
+  push:
     branches: [main]
-    types: [completed]
 
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
