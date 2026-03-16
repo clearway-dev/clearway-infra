@@ -4,6 +4,7 @@
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pgrouting;
 
 DROP TABLE IF EXISTS segment_statistics CASCADE;
 DROP TABLE IF EXISTS clusters CASCADE;
@@ -142,6 +143,10 @@ CREATE TABLE road_segments (
     name VARCHAR(255),
     road_type VARCHAR(50),
     geom GEOMETRY(LINESTRING, 4326) NOT NULL,
+    -- pgRouting topology columns (populated by `make setup-routing`)
+    seq_id BIGSERIAL,
+    source INTEGER,
+    target INTEGER,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

@@ -21,12 +21,16 @@ make build           # Rebuild Docker images
 make db-shell        # Open psql inside the container
 make test-connection # Check if PostgreSQL is ready
 make logs            # Tail container logs
+make seed-roads      # Download OSM roads and insert into road_segments
+make setup-routing   # Build pgRouting topology (run after seed-roads)
 ```
 
 **First-time setup:**
 ```bash
 cp .env.example .env
-make up
+make up          # starts DB + Flyway applies all migrations (incl. V009: pgrouting extension)
+make seed-roads  # downloads OSM road network for Plzeň, inserts into road_segments
+make setup-routing  # builds pgRouting topology on the seeded data
 ```
 
 **Default dev connection string:**
@@ -87,6 +91,8 @@ Scripts in `db/init/` run alphabetically on first container start (or after `mak
 
 ### Data Pipeline Scripts
 
+- `scripts/seed_roads.py` — downloads OSM drive network for a place (default: Plzeň, Czechia) using `osmnx` and inserts edges into `road_segments` via psycopg2. Accepts an optional CLI argument to override the place name. Run via `make seed-roads`. Requires `scripts/requirements.txt`.
+- `scripts/setup_routing.sql` — SQL run via `make setup-routing` (inside the DB container) that calls `pgr_createTopology` and creates indexes on `source`/`target`. Must run after `seed_roads` because it requires data to be present.
 - `scripts/convert_csv.py` — converts `data/dataset.csv` to bulk INSERT SQL at `sql/output.sql`. CSV columns GPS1→latitude, GPS2→longitude, A→distance_left, C→distance_right. Sets `is_valid=false` by default.
 
 ### Environments
@@ -102,7 +108,7 @@ Scripts in `db/init/` run alphabetically on first container start (or after `mak
 
 ### Schema Changes
 
-**On a running database (no data loss):** write a migration file in `db/migrations/` following the `V{NNN}__{description}.sql` naming convention, then run `make migrate`. The migration script uses `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE` so it is safe to re-run.
+**On a running database (no data loss):** write a migration file in `db/migrations/` following the `V{NNN}__{description}.sql` naming convention, then run `make migrate`. The latest is `V009__setup_pgrouting_extension.sql` which installs the pgRouting extension and adds `seq_id`, `source`, `target` to `road_segments`. The migration script uses `CREATE TABLE IF NOT EXISTS` / `ALTER TABLE` so it is safe to re-run.
 
 **Also update `db/init/001_schema.sql`** to keep fresh installs (`make reset`) in sync with the migrated state. Both places must be kept consistent.
 

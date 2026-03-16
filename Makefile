@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs ps reset clean build db-shell test-connection up-tools migrate
+.PHONY: help up down restart logs ps reset clean build db-shell test-connection up-tools migrate seed-roads setup-routing
 
 # Default target
 help:
@@ -17,6 +17,8 @@ help:
 	@echo "  make build           - Rebuild containers"
 	@echo "  make db-shell        - Connect to PostgreSQL shell"
 	@echo "  make migrate         - Apply pending migrations from db/migrations/"
+	@echo "  make seed-roads      - Download OSM roads and insert into road_segments"
+	@echo "  make setup-routing   - Build pgRouting topology (run after seed-roads)"
 	@echo "  make test-connection - Test database connection"
 	@echo ""
 
@@ -97,3 +99,17 @@ test-connection:
 	docker-compose exec db pg_isready -U clearway && \
 	echo "✅ Database is ready!" || \
 	echo "❌ Database is not ready!"
+
+# Download OSM road data and seed into road_segments table
+seed-roads:
+	@echo "🗺️  Installing Python dependencies..."
+	pip install -q -r scripts/requirements.txt
+	@echo "🗺️  Seeding OSM road segments..."
+	python scripts/seed_roads.py
+	@echo "✅ Roads seeded!"
+
+# Build pgRouting topology (run after seed-roads)
+setup-routing:
+	@echo "🔀 Building pgRouting topology..."
+	docker-compose exec -T db psql -U $${POSTGRES_USER:-clearway} -d $${POSTGRES_DB:-clearway} -f - < scripts/setup_routing.sql
+	@echo "✅ Routing topology built!"
