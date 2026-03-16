@@ -30,26 +30,13 @@ jobs:
         run: sqlfluff lint db/migrations/ scripts/setup_routing.sql
 
   integration-test:
-    name: Integration Test
+    name: Integration Test & Golden Image
     runs-on: ubuntu-latest
     needs: lint
     timeout-minutes: 30
-
-    services:
-      postgres:
-        # pgrouting/pgrouting bundles PostgreSQL + PostGIS + pgRouting in one image
-        image: pgrouting/pgrouting:15-3.5-3.7
-        env:
-          POSTGRES_USER: clearway
-          POSTGRES_PASSWORD: clearway_dev_password
-          POSTGRES_DB: clearway
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +54,29 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install -r scripts/requirements.txt
+
+      # PGDATA is overridden to /pgseed — a path outside the VOLUME declared by the
+      # postgres base image (/var/lib/postgresql/data). docker commit captures all
+      # filesystem changes except declared VOLUME mountpoints, so the seeded data
+      # at /pgseed will be baked into the golden image.
+      - name: Start PostgreSQL
+        run: |
+          docker run -d \
+            --name clearway-db \
+            -e POSTGRES_USER=clearway \
+            -e POSTGRES_PASSWORD=clearway_dev_password \
+            -e POSTGRES_DB=clearway \
+            -e PGDATA=/pgseed \
+            -p 5432:5432 \
+            pgrouting/pgrouting:15-3.5-3.7
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          for i in $(seq 1 30); do
+            docker exec clearway-db pg_isready -U clearway && break
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
 
       - name: Apply base schema
         run: psql -h localhost -U clearway -d clearway -f db/init/001_schema.sql
@@ -91,8 +101,7 @@ jobs:
         run: make seed-roads
 
       # make setup-routing calls `docker-compose exec db psql`, which requires a running
-      # Compose stack. In CI the DB is a service container, so psql is invoked directly
-      # against localhost — the SQL executed is byte-for-byte identical.
+      # Compose stack. In CI psql is invoked directly — the SQL executed is identical.
       - name: Build pgRouting topology
         run: psql -h localhost -U clearway -d clearway -f scripts/setup_routing.sql
         env:
@@ -108,3 +117,28 @@ jobs:
           [ "$VERTICES" -gt 0 ] && [ "$EDGES" -gt 0 ]
         env:
           PGPASSWORD: clearway_dev_password
+
+      # Stop postgres cleanly before committing to guarantee WAL is flushed and
+      # the data directory is in a consistent state. The container moves to "exited"
+      # state but remains accessible for docker commit.
+      - name: Stop PostgreSQL cleanly
+        run: docker stop clearway-db
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # -c "ENV PGDATA=/pgseed" propagates the custom data directory into the image
+      # so that a fresh `docker run` of the golden image starts with the seeded data.
+      - name: Build and push golden image
+        run: |
+          IMAGE=ghcr.io/$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')/clearway-db-seeded:latest
+          docker commit \
+            -c "ENV PGDATA=/pgseed" \
+            -c "EXPOSE 5432" \
+            clearway-db \
+            $IMAGE
+          docker push $IMAGE
