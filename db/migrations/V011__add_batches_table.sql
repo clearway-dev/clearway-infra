@@ -6,7 +6,7 @@
 -- ==============================================
 -- 1. CREATE BATCHES TABLE
 -- ==============================================
-CREATE TABLE batches (
+CREATE TABLE IF NOT EXISTS batches (
     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     status     VARCHAR(50) NOT NULL DEFAULT 'pending'
@@ -15,9 +15,10 @@ CREATE TABLE batches (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_batches_session_id ON batches(session_id);
-CREATE INDEX idx_batches_status     ON batches(status);
+CREATE INDEX IF NOT EXISTS idx_batches_session_id ON batches(session_id);
+CREATE INDEX IF NOT EXISTS idx_batches_status     ON batches(status);
 
+DROP TRIGGER IF EXISTS trg_batches_set_updated_at ON batches;
 CREATE TRIGGER trg_batches_set_updated_at
     BEFORE UPDATE ON batches
     FOR EACH ROW
@@ -44,7 +45,7 @@ ON CONFLICT DO NOTHING;
 -- ==============================================
 -- 3. ADD batch_id TO raw_measurements (nullable first for data migration)
 -- ==============================================
-ALTER TABLE raw_measurements ADD COLUMN batch_id UUID REFERENCES batches(id) ON DELETE CASCADE;
+ALTER TABLE raw_measurements ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES batches(id) ON DELETE CASCADE;
 
 -- Populate batch_id from the newly created batches
 UPDATE raw_measurements AS rm
@@ -55,13 +56,13 @@ WHERE  b.session_id = rm.session_id;
 -- Now enforce NOT NULL
 ALTER TABLE raw_measurements ALTER COLUMN batch_id SET NOT NULL;
 
-CREATE INDEX idx_raw_measurements_batch_id ON raw_measurements(batch_id);
+CREATE INDEX IF NOT EXISTS idx_raw_measurements_batch_id ON raw_measurements(batch_id);
 
 -- ==============================================
 -- 4. DROP session_id FROM raw_measurements
 -- ==============================================
 DROP INDEX IF EXISTS idx_raw_measurements_session_id;
-ALTER TABLE raw_measurements DROP COLUMN session_id;
+ALTER TABLE raw_measurements DROP COLUMN IF EXISTS session_id;
 
 -- ==============================================
 -- 5. RECREATE recent_measurements VIEW
