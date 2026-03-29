@@ -12,6 +12,7 @@ DROP TABLE IF EXISTS road_segments CASCADE;
 DROP TABLE IF EXISTS invalid_measurements CASCADE;
 DROP TABLE IF EXISTS cleaned_measurements CASCADE;
 DROP TABLE IF EXISTS raw_measurements CASCADE;
+DROP TABLE IF EXISTS batches CASCADE;
 DROP TABLE IF EXISTS sessions CASCADE;
 DROP TABLE IF EXISTS sensors CASCADE;
 DROP TABLE IF EXISTS vehicles CASCADE;
@@ -24,6 +25,7 @@ DROP TABLE IF EXISTS road_segments CASCADE;
 DROP TABLE IF EXISTS invalid_measurements CASCADE;
 DROP TABLE IF EXISTS cleaned_measurements CASCADE;
 DROP TABLE IF EXISTS raw_measurements CASCADE;
+DROP TABLE IF EXISTS batches CASCADE;
 DROP TABLE IF EXISTS sessions CASCADE;
 DROP TABLE IF EXISTS sensors CASCADE;
 
@@ -106,12 +108,31 @@ CREATE INDEX idx_sessions_sensor_id ON sessions(sensor_id);
 CREATE INDEX idx_sessions_vehicle_id ON sessions(vehicle_id);
 
 -- ==============================================
+-- BATCHES TABLE
+-- ==============================================
+-- Groups raw measurements from one measurement run within a session
+CREATE TABLE batches (
+    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    status     VARCHAR(50) NOT NULL DEFAULT 'pending'
+                   CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_batches_session_id ON batches(session_id);
+CREATE INDEX idx_batches_status     ON batches(status);
+
+COMMENT ON TABLE batches IS 'Groups of raw measurements collected in one measurement run within a session';
+COMMENT ON COLUMN batches.status IS 'Processing state: pending | processing | completed | failed';
+
+-- ==============================================
 -- RAW MEASUREMENTS TABLE
 -- ==============================================
 -- Stores raw sensor measurements
 CREATE TABLE raw_measurements (
     id BIGSERIAL PRIMARY KEY,
-    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    batch_id UUID NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
     measured_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     -- No range or NOT NULL constraints on measured columns: Bronze layer accepts
     -- physically invalid readings and missing values (GPS fix failure, sensor
@@ -128,7 +149,7 @@ CREATE TABLE raw_measurements (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_raw_measurements_session_id ON raw_measurements(session_id);
+CREATE INDEX idx_raw_measurements_batch_id ON raw_measurements(batch_id);
 CREATE INDEX idx_raw_measurements_measured_at ON raw_measurements(measured_at DESC);
 CREATE INDEX idx_raw_measurements_is_valid ON raw_measurements(is_valid);
 CREATE INDEX idx_raw_measurements_location ON raw_measurements(latitude, longitude);
@@ -246,9 +267,10 @@ JOIN vehicles v ON s.vehicle_id = v.id;
 
 -- Recent measurements view (last 24 hours)
 CREATE OR REPLACE VIEW recent_measurements AS
-SELECT 
+SELECT
     rm.id,
-    rm.session_id,
+    b.session_id,
+    rm.batch_id,
     rm.measured_at,
     rm.latitude,
     rm.longitude,
@@ -257,13 +279,14 @@ SELECT
     rm.is_valid,
     s.sensor_id,
     s.vehicle_id,
-    sen.description as sensor_description,
+    sen.description AS sensor_description,
     v.vehicle_name,
-    v.width as vehicle_width
+    v.width         AS vehicle_width
 FROM raw_measurements rm
-JOIN sessions s ON rm.session_id = s.id
-JOIN sensors sen ON s.sensor_id = sen.id
-JOIN vehicles v ON s.vehicle_id = v.id
+JOIN batches          b   ON rm.batch_id    = b.id
+JOIN sessions         s   ON b.session_id   = s.id
+JOIN sensors          sen ON s.sensor_id    = sen.id
+JOIN vehicles         v   ON s.vehicle_id   = v.id
 WHERE rm.measured_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'
 ORDER BY rm.measured_at DESC;
 
@@ -298,6 +321,11 @@ BEGIN
     RETURN NEW;
 END;
 $$;
+
+CREATE TRIGGER trg_batches_set_updated_at
+    BEFORE UPDATE ON batches
+    FOR EACH ROW
+    EXECUTE FUNCTION trigger_set_updated_at();
 
 CREATE TRIGGER trg_vehicles_set_updated_at
     BEFORE UPDATE ON vehicles
@@ -385,6 +413,7 @@ $$ LANGUAGE plpgsql;
 
 COMMENT ON TABLE sensors IS 'Vehicle-mounted sensors collecting road width measurements';
 COMMENT ON TABLE sessions IS 'Measurement collection sessions from sensors';
+COMMENT ON TABLE batches IS 'Groups of raw measurements collected in one measurement run within a session';
 COMMENT ON TABLE raw_measurements IS 'Raw unprocessed sensor measurements';
 COMMENT ON TABLE cleaned_measurements IS 'Validated and processed measurements';
 COMMENT ON TABLE invalid_measurements IS 'Rejected measurements with reasons';
