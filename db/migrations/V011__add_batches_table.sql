@@ -30,39 +30,45 @@ COMMENT ON COLUMN batches.status IS 'Processing state: pending | processing | co
 GRANT SELECT, INSERT, UPDATE, DELETE ON batches TO clearway;
 
 -- ==============================================
--- 2. MIGRATE DATA: create one batch per existing session used in raw_measurements
+-- 2–4. DATA MIGRATION + SCHEMA CHANGE
+--      Runs only when raw_measurements.session_id still exists
+--      (skipped on fresh installs that already use batch_id via 001_schema.sql)
 -- ==============================================
-INSERT INTO batches (id, session_id, status, created_at, updated_at)
-SELECT DISTINCT
-    uuid_generate_v4()                                      AS id,
-    rm.session_id,
-    'completed'                                             AS status,
-    MIN(rm.created_at) OVER (PARTITION BY rm.session_id)   AS created_at,
-    CURRENT_TIMESTAMP                                       AS updated_at
-FROM raw_measurements AS rm
-ON CONFLICT DO NOTHING;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'raw_measurements' AND column_name = 'session_id'
+    ) THEN
+        -- 2. Create one batch per distinct session in raw_measurements
+        INSERT INTO batches (id, session_id, status, created_at, updated_at)
+        SELECT DISTINCT
+            uuid_generate_v4()                                    AS id,
+            rm.session_id,
+            'completed'                                           AS status,
+            MIN(rm.created_at) OVER (PARTITION BY rm.session_id) AS created_at,
+            CURRENT_TIMESTAMP                                     AS updated_at
+        FROM raw_measurements AS rm
+        ON CONFLICT DO NOTHING;
 
--- ==============================================
--- 3. ADD batch_id TO raw_measurements (nullable first for data migration)
--- ==============================================
-ALTER TABLE raw_measurements ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES batches(id) ON DELETE CASCADE;
+        -- 3. Add batch_id, populate from new batches, enforce NOT NULL
+        ALTER TABLE raw_measurements
+            ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES batches(id) ON DELETE CASCADE;
 
--- Populate batch_id from the newly created batches
-UPDATE raw_measurements AS rm
-SET    batch_id = b.id
-FROM   batches AS b
-WHERE  b.session_id = rm.session_id;
+        UPDATE raw_measurements AS rm
+        SET    batch_id = b.id
+        FROM   batches AS b
+        WHERE  b.session_id = rm.session_id;
 
--- Now enforce NOT NULL
-ALTER TABLE raw_measurements ALTER COLUMN batch_id SET NOT NULL;
+        ALTER TABLE raw_measurements ALTER COLUMN batch_id SET NOT NULL;
+
+        -- 4. Drop the old session_id column
+        DROP INDEX IF EXISTS idx_raw_measurements_session_id;
+        ALTER TABLE raw_measurements DROP COLUMN session_id;
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_raw_measurements_batch_id ON raw_measurements(batch_id);
-
--- ==============================================
--- 4. DROP session_id FROM raw_measurements
--- ==============================================
-DROP INDEX IF EXISTS idx_raw_measurements_session_id;
-ALTER TABLE raw_measurements DROP COLUMN IF EXISTS session_id;
 
 -- ==============================================
 -- 5. RECREATE recent_measurements VIEW
