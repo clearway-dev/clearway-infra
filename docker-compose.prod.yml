@@ -27,6 +27,7 @@ services:
   # introduced; Flyway will record them as applied and only run V005 onwards.
   migrator:
     image: flyway/flyway:10-alpine
+    profiles: ["migrate"]
     environment:
       FLYWAY_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
       FLYWAY_USER: ${POSTGRES_USER}
@@ -41,7 +42,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    restart: on-failure
 
   # --- PGADMIN (GUI) ---
   pgadmin:
