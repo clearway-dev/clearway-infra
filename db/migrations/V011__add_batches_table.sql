@@ -62,7 +62,8 @@ BEGIN
 
         ALTER TABLE raw_measurements ALTER COLUMN batch_id SET NOT NULL;
 
-        -- 4. Drop the old session_id column
+        -- 4. Drop view that depends on session_id, then drop the column
+        DROP VIEW IF EXISTS recent_measurements;
         DROP INDEX IF EXISTS idx_raw_measurements_session_id;
         ALTER TABLE raw_measurements DROP COLUMN session_id;
     END IF;
