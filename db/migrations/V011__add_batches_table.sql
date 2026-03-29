@@ -33,12 +33,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON batches TO clearway;
 -- ==============================================
 INSERT INTO batches (id, session_id, status, created_at, updated_at)
 SELECT DISTINCT
-    uuid_generate_v4(),
-    rm.session_id,
-    'completed',
-    MIN(rm.created_at) OVER (PARTITION BY rm.session_id),
-    CURRENT_TIMESTAMP
-FROM raw_measurements rm
+    uuid_generate_v4()                                      AS id,
+    rm.session_id                                           AS session_id,
+    'completed'                                             AS status,
+    MIN(rm.created_at) OVER (PARTITION BY rm.session_id)   AS created_at,
+    CURRENT_TIMESTAMP                                       AS updated_at
+FROM raw_measurements AS rm
 ON CONFLICT DO NOTHING;
 
 -- ==============================================
@@ -47,9 +47,9 @@ ON CONFLICT DO NOTHING;
 ALTER TABLE raw_measurements ADD COLUMN batch_id UUID REFERENCES batches(id) ON DELETE CASCADE;
 
 -- Populate batch_id from the newly created batches
-UPDATE raw_measurements rm
+UPDATE raw_measurements AS rm
 SET    batch_id = b.id
-FROM   batches b
+FROM   batches AS b
 WHERE  b.session_id = rm.session_id;
 
 -- Now enforce NOT NULL
@@ -83,10 +83,10 @@ SELECT
     sen.description AS sensor_description,
     v.vehicle_name,
     v.width        AS vehicle_width
-FROM raw_measurements rm
-JOIN batches          b   ON rm.batch_id    = b.id
-JOIN sessions         s   ON b.session_id   = s.id
-JOIN sensors          sen ON s.sensor_id    = sen.id
-JOIN vehicles         v   ON s.vehicle_id   = v.id
+FROM raw_measurements AS rm
+INNER JOIN batches   AS b   ON rm.batch_id  = b.id
+INNER JOIN sessions  AS s   ON b.session_id = s.id
+INNER JOIN sensors   AS sen ON s.sensor_id  = sen.id
+INNER JOIN vehicles  AS v   ON s.vehicle_id = v.id
 WHERE rm.measured_at > CURRENT_TIMESTAMP - INTERVAL '24 hours'
 ORDER BY rm.measured_at DESC;
