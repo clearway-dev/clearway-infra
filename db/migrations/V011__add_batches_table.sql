@@ -34,7 +34,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON batches TO clearway;
 INSERT INTO batches (id, session_id, status, created_at, updated_at)
 SELECT DISTINCT
     uuid_generate_v4()                                      AS id,
-    rm.session_id                                           AS session_id,
+    rm.session_id,
     'completed'                                             AS status,
     MIN(rm.created_at) OVER (PARTITION BY rm.session_id)   AS created_at,
     CURRENT_TIMESTAMP                                       AS updated_at
