@@ -183,6 +183,9 @@ CREATE INDEX idx_road_segments_road_type ON road_segments(road_type);
 CREATE TABLE clusters (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     road_segment_id UUID REFERENCES road_segments(id) ON DELETE SET NULL,
+    stat_date    DATE        NOT NULL,
+    severity     VARCHAR(20) NOT NULL CHECK (severity IN ('critical', 'high', 'medium')),
+    cluster_size INT         NOT NULL CHECK (cluster_size > 0),
     avg_width FLOAT NOT NULL CHECK (avg_width > 0),
     min_width FLOAT NOT NULL CHECK (min_width > 0),
     max_width FLOAT NOT NULL CHECK (max_width > 0),
@@ -192,9 +195,11 @@ CREATE TABLE clusters (
     CONSTRAINT width_range_valid CHECK (min_width <= avg_width AND avg_width <= max_width)
 );
 
-CREATE INDEX idx_clusters_geom ON clusters USING GIST(geom);
+CREATE INDEX idx_clusters_geom         ON clusters USING GIST(geom);
 CREATE INDEX idx_clusters_road_segment ON clusters(road_segment_id);
-CREATE INDEX idx_clusters_avg_width ON clusters(avg_width);
+CREATE INDEX idx_clusters_avg_width    ON clusters(avg_width);
+CREATE INDEX idx_clusters_stat_date    ON clusters(stat_date);
+CREATE INDEX idx_clusters_severity     ON clusters(severity);
 
 -- ==============================================
 -- CLEANED MEASUREMENTS TABLE
