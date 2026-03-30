@@ -218,6 +218,7 @@ CREATE INDEX idx_cleaned_measurements_geom ON cleaned_measurements USING GIST(ge
 CREATE INDEX idx_cleaned_measurements_raw_id ON cleaned_measurements(raw_measurement_id);
 CREATE INDEX idx_cleaned_measurements_quality ON cleaned_measurements(quality_score DESC);
 CREATE INDEX idx_cleaned_measurements_cluster_id ON cleaned_measurements(cluster_id);
+CREATE INDEX idx_cleaned_measurements_created_at ON cleaned_measurements(created_at);
 
 -- ==============================================
 -- INVALID MEASUREMENTS TABLE
