@@ -1,66 +1,115 @@
-import pandas as pd
+"""
+convert_csv.py — Import a CSV measurement file into the ClearWay database.
+
+Creates a Session → Batch → RawMeasurements chain matching the current schema.
+
+Usage:
+    python convert_csv.py --date 2026-03-31 --sensor-id <uuid> --vehicle-id <uuid>
+    python convert_csv.py --date 2026-03-31  # uses defaults below
+
+CSV format expected: time,GPS1,GPS2,A,B,C
+    time   — HH:MM:SS
+    GPS1   — latitude
+    GPS2   — longitude
+    A      — distance_left (cm)
+    C      — distance_right (cm)
+    B      — unused
+"""
+
+import argparse
+import os
 import sys
+import uuid
 from datetime import datetime
 
-# CONFIGURATION
-# ==========================================
-INPUT_FILE = '../data/dataset.csv'      # Your source file
-OUTPUT_FILE = '../sql/output.sql'   # The file to run in PgAdmin
-SESSION_ID = '00000000-0000-0000-0000-000000000000' # Matches the SQL above
-DATE_OF_MEASUREMENT = '2025-11-18' # Set the actual date of the drive here
-# ==========================================
+import pandas as pd
+import psycopg2
+from psycopg2.extras import execute_values
 
-def generate_sql(): 
+# ── Defaults (override via CLI args) ─────────────────────────────────────────
+DEFAULT_INPUT_FILE = "../data/dataset.csv"
+DEFAULT_SENSOR_ID  = "22222222-2222-2222-2222-222222222222"
+DEFAULT_VEHICLE_ID = "11111111-1111-1111-1111-111111111111"  # ClearWay Test Vehicle (208 cm)
+# ─────────────────────────────────────────────────────────────────────────────
+
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://clearway:clearway_dev_password@localhost:5432/clearway_db",
+)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Import CSV dataset into ClearWay DB.")
+    parser.add_argument("--date",       required=True, metavar="YYYY-MM-DD", help="Date of measurement")
+    parser.add_argument("--input",      default=DEFAULT_INPUT_FILE,          help="Path to CSV file")
+    parser.add_argument("--sensor-id",  default=DEFAULT_SENSOR_ID,           help="Sensor UUID")
+    parser.add_argument("--vehicle-id", default=DEFAULT_VEHICLE_ID,          help="Vehicle UUID")
+    args = parser.parse_args()
+
+    measurement_date = args.date
+
+    # -- Load CSV -------------------------------------------------------------
+    print(f"Reading {args.input}...")
+    df = pd.read_csv(args.input)
+    df = df.rename(columns={"GPS1": "latitude", "GPS2": "longitude",
+                             "A": "distance_left", "C": "distance_right"})
+
+    df["measured_at"] = pd.to_datetime(
+        measurement_date + " " + df["time"], format="%Y-%m-%d %H:%M:%S"
+    )
+
+    print(f"Loaded {len(df)} rows for {measurement_date}.")
+
+    # -- Insert into DB -------------------------------------------------------
+    conn = psycopg2.connect(DATABASE_URL)
     try:
-        # Read the CSV
-        print(f"Reading {INPUT_FILE}...")
-        df = pd.read_csv(INPUT_FILE)
-        
-        # Rename columns to match database schema
-        # CSV: time, GPS1, GPS2, A, B, C
-        df = df.rename(columns={
-            'GPS1': 'latitude',
-            'GPS2': 'longitude',
-            'A': 'distance_left',
-            'C': 'distance_right'
-        })
-        
-        # Create timestamp column
-        # The CSV only has time (HH:MM:SS), so we attach the date
-        df['measured_at'] = pd.to_datetime(
-            DATE_OF_MEASUREMENT + ' ' + df['time'], 
-            format='%Y-%m-%d %H:%M:%S'
-        )
-        
-        # Add required constant columns
-        df['session_id'] = SESSION_ID
-        df['is_valid'] = False  # As requested
-        
-        # Select and reorder columns
-        cols = ['session_id', 'measured_at', 'latitude', 'longitude', 'distance_left', 'distance_right', 'is_valid']
-        
-        # Generate SQL file
-        print(f"Generating SQL for {len(df)} rows...")
-        with open(OUTPUT_FILE, 'w') as f:
-            f.write("-- Bulk Insert for ClearWay\n")
-            f.write("BEGIN;\n") # Start transaction for speed
-            
-            for _, row in df.iterrows():
-                sql = (
-                    "INSERT INTO raw_measurements "
-                    "(session_id, measured_at, latitude, longitude, distance_left, distance_right, is_valid) "
-                    "VALUES "
-                    f"('{row['session_id']}', '{row['measured_at']}', {row['latitude']}, {row['longitude']}, "
-                    f"{row['distance_left']}, {row['distance_right']}, {row['is_valid']});\n"
+        with conn:
+            with conn.cursor() as cur:
+                # 1. Create Session
+                session_id = str(uuid.uuid4())
+                cur.execute(
+                    "INSERT INTO sessions (id, sensor_id, vehicle_id) VALUES (%s, %s, %s)",
+                    (session_id, args.sensor_id, args.vehicle_id),
                 )
-                f.write(sql)
-                
-            f.write("COMMIT;\n")
-            
-        print(f"Success! Run '{OUTPUT_FILE}' in your database query tool.")
+                print(f"Created session: {session_id}")
 
-    except Exception as e:
-        print(f"Error: {e}")
+                # 2. Create Batch
+                batch_id = str(uuid.uuid4())
+                cur.execute(
+                    "INSERT INTO batches (id, session_id, status) VALUES (%s, %s, 'completed')",
+                    (batch_id, session_id),
+                )
+                print(f"Created batch:   {batch_id}")
+
+                # 3. Insert RawMeasurements
+                rows = [
+                    (
+                        batch_id,
+                        row["measured_at"].to_pydatetime(),
+                        row["latitude"],
+                        row["longitude"],
+                        row["distance_left"],
+                        row["distance_right"],
+                    )
+                    for _, row in df.iterrows()
+                ]
+
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO raw_measurements
+                        (batch_id, measured_at, latitude, longitude, distance_left, distance_right)
+                    VALUES %s
+                    """,
+                    rows,
+                )
+                print(f"Inserted {len(rows)} raw measurements.")
+
+    finally:
+        conn.close()
+
+    print("Done. Run calculate_stats.py to process the new data.")
+
 
 if __name__ == "__main__":
-    generate_sql()
+    main()
