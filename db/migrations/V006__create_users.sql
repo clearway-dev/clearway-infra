@@ -23,7 +23,7 @@ INSERT INTO users (email, hashed_password, full_name, role) VALUES (
 
 -- Seed: dispecink@hzs-pk.cz / dispatcher123
 INSERT INTO users (email, hashed_password, full_name, role) VALUES (
-    'dispecink@hzs-pk.cz',
+    'dispecink@clearway.cz',
     '$2b$12$WM.5YHxMeqqNHJMoksEtSejkwHTPaxz/sEbLV63qe4skBqqorW0UO',
     'Jana Nováková',
     'dispatcher'
