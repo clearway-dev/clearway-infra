@@ -41,3 +41,6 @@ npm-debug.log*
 
 # pgAdmin session data
 pgadmin/
+
+.venv
+cache/

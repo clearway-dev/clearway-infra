@@ -103,9 +103,9 @@ test-connection:
 # Download OSM road data and seed into road_segments table
 seed-roads:
 	@echo "🗺️  Installing Python dependencies..."
-	pip install -q -r scripts/requirements.txt
+	python3 -m venv .venv && .venv/bin/pip install -q -r scripts/requirements.txt
 	@echo "🗺️  Seeding OSM road segments..."
-	python scripts/seed_roads.py
+	.venv/bin/python scripts/seed_roads.py
 	@echo "✅ Roads seeded!"
 
 # Build pgRouting topology (run after seed-roads)
