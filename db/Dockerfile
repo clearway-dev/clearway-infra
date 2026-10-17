@@ -1,6 +1,8 @@
 FROM postgis/postgis:16-3.4
 
-RUN apt-get update \
+# bullseye už není na apt.postgresql.org, pgdg ho drží v archivu
+RUN sed -i 's#apt.postgresql.org/pub/repos/apt#apt-archive.postgresql.org/pub/repos/apt#' /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
     && apt-get install -y --no-install-recommends postgresql-16-pgrouting \
     && rm -rf /var/lib/apt/lists/*
 

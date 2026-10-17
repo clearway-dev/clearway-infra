@@ -28,7 +28,9 @@ BEGIN
     FROM 
         raw_measurements rm
     JOIN 
-        sessions s ON rm.session_id = s.id
+        batches b ON rm.batch_id = b.id
+    JOIN 
+        sessions s ON b.session_id = s.id
     JOIN 
         vehicles v ON s.vehicle_id = v.id
     -- ZPRACOVÁVÁ POUZE DATA, KTERÁ NEBYLA ZATÍM ZAPSAÁNA
