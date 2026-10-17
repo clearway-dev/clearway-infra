@@ -41,6 +41,7 @@ jobs:
           key: ${{ secrets.HETZNER_SSH_KEY }}
           envs: DB_USER,DB_PASSWORD,DB_NAME,PGADMIN_EMAIL,PGADMIN_PASSWORD
           script: |
+            set -e
             cd /home/vandl/infra
             
             echo "POSTGRES_USER=clearway" > .env
